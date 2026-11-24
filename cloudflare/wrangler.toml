@@ -1,0 +1,8 @@
+name = "voiceassistant"
+main = "src/index.ts"
+compatibility_date = "2026-11-24"
+
+[vars]
+GEMINI_MODEL = "gemini-3.8-flash-tts"
+DEFAULT_VOICE = "Orus"
+MAX_TEXT_CHARS = "2000"
