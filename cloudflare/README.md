@@ -1,58 +1,55 @@
 # Cloudflare TTS backend
 
-A small personal-use proxy for Gemini 3.8 Flash TTS.
+A small personal-use proxy for Fish Audio Jarvis TTS, with Gemini available only when explicitly selected.
 
-## Strict zero-cost rules
+## Strict zero-cost and privacy rules
 - Use Cloudflare Workers Free only.
-- Use Gemini API Free Tier only.
+- Fish Audio requests must use the exact model ID `s2.1-pro-free`. The Worker pins this model in the request header so the API cannot silently fall back to paid `s2.1-pro`.
+- Fish Audio currently advertises free API access through November 30, 2026, subject to its Fair Use Policy. Continued free access is not guaranteed.
 - Do not add a payment method or enable paid billing.
-- No paid fallback, GPU host, or automatic provider switching.
-- If Gemini returns HTTP 429, this API returns HTTP 429 and stops.
+- No automatic provider fallback. If Fish Audio returns HTTP 429 or another error, this API returns an error and stops.
+- Gemini can be selected only by sending `"provider":"gemini"`; keep that API project on a verified free tier and do not enable billing.
+- The Worker does not log or persist request text or generated audio.
+- Fish Audio states that requests may be used to improve model quality. Do not send passwords, private messages, personal records, or other sensitive text to Fish Audio.
 - Gemini Interactions are sent with `store: false`.
-- Text and generated audio are not written to logs or persistent storage.
 
-Cloudflare Workers Free currently has a daily request limit and a 10 ms CPU limit per invocation. The Worker only validates the request, makes one upstream fetch, and decodes the returned audio. See the official limits:
-https://developers.cloudflare.com/workers/platform/limits/
+Fish Audio free API details and current end date:
+https://fish.audio/blog/s2-1-pro-free-api/
 
-Gemini TTS Free Tier pricing and data-use conditions:
-https://ai.google.dev/gemini-api/docs/pricing
+Fish Audio TTS API reference:
+https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech
 
-## 1. Create a free Gemini API key
-1. Open https://aistudio.google.com/app/apikey
-2. Sign in with a Google account.
-3. Create an API key in a project eligible for Gemini API Free Tier.
-4. Do not enable billing or add a payment method.
-5. Do not commit the key or send it in chat.
+## 1. Secrets and configuration
 
-Gemini TTS model: `gemini-3.8-flash-tts`
+In Cloudflare Worker Settings > Variables and Secrets, configure:
 
-REST endpoint:
-`https://generativelanguage.googleapis.com/v1beta/interactions`
+**Secrets**
+- `FISH_API_KEY`: Fish Audio API key.
+- `APP_ACCESS_TOKEN`: a long random token used by your own app to access this endpoint.
+- `GEMINI_API_KEY`: optional, only if you intend to select Gemini explicitly.
 
-Official TTS documentation:
-https://ai.google.dev/gemini-api/docs/speech-generation
+**Plain-text variables**
+- `FISH_VOICE_ID`: defaults to the approved Jarvis voice ID `680d74fbef69419f87cfc70f092a1451`.
+- `MAX_TEXT_CHARS`: maximum text length, capped at 2,000.
+- `GEMINI_MODEL` and `DEFAULT_VOICE`: used only for explicit Gemini requests.
 
-## 2. Create a Cloudflare Worker
-1. Open https://dash.cloudflare.com/
-2. Open Workers & Pages and create a Worker named `voiceassistant`.
-3. Deploy this folder using Wrangler (commands below), or paste the built Worker code through the dashboard.
-4. In Worker Settings > Variables and Secrets, add these as **secrets**:
-   - `GEMINI_API_KEY`: the key from Google AI Studio.
-   - `APP_ACCESS_TOKEN`: a long random token used by your own app to access this endpoint.
-5. Keep the Worker on the Free plan. Do not upgrade or enable paid usage.
+Keep all keys in Cloudflare Secrets. Never commit them, put them in the client app, or send them in chat.
 
 Generate an app token locally, for example:
 `openssl rand -hex 32`
 
-## 3. Deploy with Wrangler
+## 2. Deploy with Wrangler
+
 Requires Node.js and npm on the development machine. No phone or Termux is required.
 
 ```bash
 cd cloudflare
 npm install
 npx wrangler login
-npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put FISH_API_KEY
 npx wrangler secret put APP_ACCESS_TOKEN
+# Optional, only if Gemini is deliberately retained:
+npx wrangler secret put GEMINI_API_KEY
 npm run typecheck
 npm run deploy
 ```
@@ -62,25 +59,28 @@ When prompted, paste each secret directly into the terminal. Do not put secret v
 The deployed URL will resemble:
 `https://voiceassistant.<your-account>.workers.dev`
 
-## 4. Test
+## 3. Test
+
 Health check:
 
 ```bash
 curl https://voiceassistant.<your-account>.workers.dev/health
 ```
 
-Synthesize speech:
+Synthesize the default Jarvis voice:
 
 ```bash
 curl -X POST \
   "https://voiceassistant.<your-account>.workers.dev/api/tts" \
   -H "Authorization: Bearer $APP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"text":"Добрый день. Все системы работают штатно.","voice":"Orus"}' \
-  --output test.wav
+  -d '{"text":"Сэр, все системы работают штатно."}' \
+  --output jarvis.wav
 ```
 
-The API returns WAV audio. The default voice is `Orus`; other allowed prebuilt voices are `Charon`, `Fenrir`, `Puck`, `Rasalgethi`, `Alnilam`, and `Gacrux`. Compare them with the same Russian test phrases before choosing the final voice.
+The default provider is Fish Audio S2.1 Pro Free, with the selected Jarvis voice. Audio is requested as 24 kHz WAV to preserve the Android app's existing WAV playback contract.
+
+To deliberately use Gemini instead, send `"provider":"gemini"` and optionally `"voice"` and `"style"`. This is not an automatic fallback.
 
 ## API contract
 
@@ -90,10 +90,20 @@ Headers:
 - `Authorization: Bearer <APP_ACCESS_TOKEN>`
 - `Content-Type: application/json`
 
-Body:
+Default Fish Audio request:
+
+```json
+{
+  "text": "Текст для озвучивания"
+}
+```
+
+Optional explicit Gemini request:
+
 ```json
 {
   "text": "Текст для озвучивания",
+  "provider": "gemini",
   "voice": "Orus",
   "style": "Спокойная, уверенная, естественная русская речь"
 }
@@ -102,11 +112,11 @@ Body:
 Success: `audio/wav`
 
 Errors:
-- `400`: invalid JSON, empty text, or unsupported voice.
+- `400`: invalid JSON, empty text, or unsupported provider/voice.
 - `401`: missing/incorrect app token.
 - `413`: text exceeds the configured limit.
-- `429`: Gemini free quota/rate limit reached. No paid fallback.
+- `429`: selected provider quota/rate limit reached. No fallback.
 - `502`: upstream service or response error.
-- `503`: server secrets are missing.
+- `503`: required server secret is missing.
 
 Maximum text length: 2,000 characters per request. Keep longer assistant responses split into smaller speech chunks.
