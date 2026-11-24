@@ -109,4 +109,4 @@ Errors:
 - `502`: upstream service or response error.
 - `503`: server secrets are missing.
 
-Maximum text length: 5,000 characters per request.
+Maximum text length: 2,000 characters per request. Keep longer assistant responses split into smaller speech chunks.
