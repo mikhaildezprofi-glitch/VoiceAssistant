@@ -1,12 +1,18 @@
 interface Env {
-  GEMINI_API_KEY: string;
+  GEMINI_API_KEY?: string;
+  FISH_API_KEY?: string;
   APP_ACCESS_TOKEN: string;
   GEMINI_MODEL?: string;
   DEFAULT_VOICE?: string;
+  FISH_VOICE_ID?: string;
   MAX_TEXT_CHARS?: string;
 }
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const FISH_ENDPOINT = "https://api.fish.audio/v1/tts";
+const FISH_MODEL = "s2.1-pro-free";
+const DEFAULT_FISH_VOICE_ID = "680d74fbef69419f87cfc70f092a1451";
+
 const ALLOWED_VOICES = new Set([
   "Orus",
   "Charon",
@@ -84,6 +90,20 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+function audioResponse(audio: ArrayBuffer, voiceName: string): Response {
+  return new Response(audio, {
+    status: 200,
+    headers: {
+      "content-type": "audio/wav",
+      "content-disposition": 'inline; filename="voiceassistant.wav"',
+      "content-length": String(audio.byteLength),
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "x-voice-name": voiceName
+    }
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -96,8 +116,8 @@ export default {
       return json({ error: "Not found" }, 404);
     }
 
-    if (!env.GEMINI_API_KEY || !env.APP_ACCESS_TOKEN) {
-      return json({ error: "Server secrets are not configured" }, 503);
+    if (!env.APP_ACCESS_TOKEN) {
+      return json({ error: "Server access token is not configured" }, 503);
     }
 
     const auth = request.headers.get("authorization") ?? "";
@@ -106,7 +126,12 @@ export default {
       return json({ error: "Unauthorized" }, 401);
     }
 
-    let input: { text?: unknown; voice?: unknown; style?: unknown };
+    let input: {
+      text?: unknown;
+      voice?: unknown;
+      style?: unknown;
+      provider?: unknown;
+    };
     try {
       input = await request.json() as typeof input;
     } catch {
@@ -126,6 +151,67 @@ export default {
     if (!text) return json({ error: "Text must not be empty" }, 400);
     if (text.length > maxChars) {
       return json({ error: `Text exceeds the ${maxChars}-character limit` }, 413);
+    }
+
+    const provider = input.provider === undefined ? "fish" : input.provider;
+    if (provider !== "fish" && provider !== "gemini") {
+      return json({ error: 'Field "provider" must be "fish" or "gemini"' }, 400);
+    }
+
+    if (provider === "fish") {
+      if (!env.FISH_API_KEY) {
+        return json({ error: "Fish Audio API key is not configured" }, 503);
+      }
+
+      let upstream: Response;
+      try {
+        upstream = await fetch(FISH_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "authorization": `Bearer ${env.FISH_API_KEY}`,
+            "content-type": "application/json",
+            "model": FISH_MODEL
+          },
+          body: JSON.stringify({
+            text,
+            reference_id: env.FISH_VOICE_ID ?? DEFAULT_FISH_VOICE_ID,
+            format: "wav",
+            sample_rate: 24000,
+            latency: "normal"
+          })
+        });
+      } catch {
+        return json({ error: "Fish Audio TTS is temporarily unreachable" }, 502);
+      }
+
+      if (!upstream.ok) {
+        if (upstream.status === 429) {
+          return json({
+            error: "Fish Audio free-tier quota or rate limit reached. No fallback was attempted."
+          }, 429);
+        }
+        if (upstream.status === 401 || upstream.status === 403) {
+          return json({ error: "Fish Audio API key was rejected or lacks access" }, 502);
+        }
+        return json({
+          error: "Fish Audio TTS request failed",
+          upstreamStatus: upstream.status
+        }, 502);
+      }
+
+      try {
+        const audio = await upstream.arrayBuffer();
+        if (audio.byteLength < 44) {
+          return json({ error: "Fish Audio returned an invalid WAV response" }, 502);
+        }
+        return audioResponse(audio, "Jarvis");
+      } catch {
+        return json({ error: "Fish Audio response could not be read" }, 502);
+      }
+    }
+
+    if (!env.GEMINI_API_KEY) {
+      return json({ error: "Gemini API key is not configured" }, 503);
     }
 
     const defaultVoice = env.DEFAULT_VOICE ?? "Orus";
@@ -173,7 +259,6 @@ export default {
 
     if (!upstream.ok) {
       const errorBody = await upstream.text();
-      // Do not expose upstream response bodies, which may contain diagnostic details.
       if (upstream.status === 429) {
         return json({
           error: "Free-tier quota or rate limit reached. No paid fallback was attempted."
@@ -206,17 +291,7 @@ export default {
       const audio = decodeBase64(audioBase64);
       const audioBuffer = new ArrayBuffer(audio.byteLength);
       new Uint8Array(audioBuffer).set(audio);
-      return new Response(audioBuffer, {
-        status: 200,
-        headers: {
-          "content-type": "audio/wav",
-          "content-disposition": 'inline; filename="voiceassistant.wav"',
-          "content-length": String(audio.byteLength),
-          "cache-control": "no-store",
-          "x-content-type-options": "nosniff",
-          "x-voice-name": voice
-        }
-      });
+      return audioResponse(audioBuffer, voice);
     } catch {
       return json({ error: "Gemini returned audio in an unsupported encoding" }, 502);
     }

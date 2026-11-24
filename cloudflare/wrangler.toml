@@ -5,4 +5,5 @@ compatibility_date = "2026-11-24"
 [vars]
 GEMINI_MODEL = "gemini-3.8-flash-tts"
 DEFAULT_VOICE = "Orus"
+FISH_VOICE_ID = "680d74fbef69419f87cfc70f092a1451"
 MAX_TEXT_CHARS = "2000"
