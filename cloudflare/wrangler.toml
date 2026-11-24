@@ -1,4 +1,4 @@
-name = "voiceassistant-tts"
+name = "voiceassistant"
 main = "src/index.ts"
 compatibility_date = "2026-11-24"
 
