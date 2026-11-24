@@ -204,7 +204,9 @@ export default {
 
     try {
       const audio = decodeBase64(audioBase64);
-      return new Response(audio, {
+      const audioBuffer = new ArrayBuffer(audio.byteLength);
+      new Uint8Array(audioBuffer).set(audio);
+      return new Response(audioBuffer, {
         status: 200,
         headers: {
           "content-type": "audio/wav",
