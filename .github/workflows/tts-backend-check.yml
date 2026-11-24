@@ -1,0 +1,31 @@
+name: TTS backend checks
+
+on:
+  pull_request:
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/tts-backend-check.yml"
+  push:
+    branches:
+      - main
+      - feature/cloud-tts-backend
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/tts-backend-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run typecheck
