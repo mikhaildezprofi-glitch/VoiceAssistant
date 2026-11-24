@@ -89,7 +89,7 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
-      return json({ status: "ok", service: "voiceassistant-tts" });
+      return json({ status: "ok", service: "voiceassistant" });
     }
 
     if (request.method !== "POST" || url.pathname !== "/api/tts") {
