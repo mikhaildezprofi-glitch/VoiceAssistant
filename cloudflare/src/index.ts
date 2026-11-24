@@ -119,8 +119,8 @@ export default {
 
     const text = normalizeText(input.text);
     const maxChars = Math.min(
-      Math.max(Number.parseInt(env.MAX_TEXT_CHARS ?? "5000", 10) || 5000, 1),
-      5000
+      Math.max(Number.parseInt(env.MAX_TEXT_CHARS ?? "2000", 10) || 2000, 1),
+      2000
     );
 
     if (!text) return json({ error: "Text must not be empty" }, 400);
