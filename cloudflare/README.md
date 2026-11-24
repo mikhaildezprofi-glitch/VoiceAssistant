@@ -34,7 +34,7 @@ https://ai.google.dev/gemini-api/docs/speech-generation
 
 ## 2. Create a Cloudflare Worker
 1. Open https://dash.cloudflare.com/
-2. Open Workers & Pages and create a Worker named `voiceassistant-tts`.
+2. Open Workers & Pages and create a Worker named `voiceassistant`.
 3. Deploy this folder using Wrangler (commands below), or paste the built Worker code through the dashboard.
 4. In Worker Settings > Variables and Secrets, add these as **secrets**:
    - `GEMINI_API_KEY`: the key from Google AI Studio.
@@ -60,20 +60,20 @@ npm run deploy
 When prompted, paste each secret directly into the terminal. Do not put secret values in shell history, source files, GitHub Actions logs, or chat.
 
 The deployed URL will resemble:
-`https://voiceassistant-tts.<your-account>.workers.dev`
+`https://voiceassistant.<your-account>.workers.dev`
 
 ## 4. Test
 Health check:
 
 ```bash
-curl https://voiceassistant-tts.<your-account>.workers.dev/health
+curl https://voiceassistant.<your-account>.workers.dev/health
 ```
 
 Synthesize speech:
 
 ```bash
 curl -X POST \
-  "https://voiceassistant-tts.<your-account>.workers.dev/api/tts" \
+  "https://voiceassistant.<your-account>.workers.dev/api/tts" \
   -H "Authorization: Bearer $APP_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"text":"Добрый день. Все системы работают штатно.","voice":"Orus"}' \
